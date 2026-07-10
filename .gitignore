@@ -2,3 +2,7 @@
 dist/
 .DS_Store
 .swiftpm/
+.build/
+dist/
+*.o
+*.d
