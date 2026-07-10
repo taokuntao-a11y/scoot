@@ -179,26 +179,9 @@ struct DestinationGridView: View {
     // MARK: - Bug 1 fix: NSOpenPanel key-window restoration
 
     private func addDestination() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.prompt = "添加目标文件夹"
-
-        // Ensure the app is key so the panel can receive input in LSUIElement mode.
-        NSApp.activate(ignoringOtherApps: true)
-
-        if panel.runModal() == .OK, let url = panel.url {
+        if let url = pickFolder(prompt: "添加目标文件夹") {
             destinationStore.add(url: url)
         }
-
-        // Return key focus to the MenuBarExtra panel window after the NSOpenPanel closes.
-        // The panel itself is already dismissed, so the first visible non-NSPanel window is
-        // the MenuBarExtra window; className contains "MenuBarExtra" on macOS 13+.
-        let menuBarWindow =
-            NSApp.windows.first { $0.isVisible && $0.className.contains("MenuBarExtra") }
-            ?? NSApp.windows.first { $0.isVisible && !($0 is NSPanel) }
-        menuBarWindow?.makeKeyAndOrderFront(nil)
     }
 }
 

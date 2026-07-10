@@ -76,12 +76,7 @@ struct BottomBarView: View {
     }
 
     private func chooseSourceFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.prompt = "选择源文件夹"
-        if panel.runModal() == .OK, let url = panel.url {
+        if let url = pickFolder(prompt: "选择源文件夹") {
             sourceWatcher.sourcePath = url.path
         }
     }
