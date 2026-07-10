@@ -6,46 +6,87 @@ struct FileListView: View {
     @EnvironmentObject private var sourceWatcher: SourceWatcher
     @EnvironmentObject private var selectionStore: SelectionStore
 
+    @AppStorage("hasSeenIntro") private var hasSeenIntro: Bool = false
+
     var body: some View {
-        Group {
-            if sourceWatcher.files.isEmpty {
-                VStack {
-                    Spacer()
-                    Text("下载文件夹是空的 🎉")
-                        .foregroundStyle(.secondary)
-                    Spacer()
+        VStack(spacing: 0) {
+            // First-use banner — shown until user dismisses
+            if !hasSeenIntro {
+                IntroBannerView {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        hasSeenIntro = true
+                    }
                 }
-            } else {
-                List(sourceWatcher.files, selection: $selectionStore.selection) { item in
-                    FileRowView(item: item)
-                        .tag(item.url)
-                        .onDrag {
-                            // If the dragged row is part of the selection, drag all selected items.
-                            // SwiftUI onDrag only yields one primary provider, but we encode all
-                            // selected URLs as a space-separated string in the primary item so the
-                            // drop target can recover them. Falls back to the single item otherwise.
-                            let selectedURLs: [URL]
-                            if selectionStore.selection.contains(item.url) {
-                                selectedURLs = sourceWatcher.files
-                                    .map(\.url)
-                                    .filter { selectionStore.selection.contains($0) }
-                            } else {
-                                selectedURLs = [item.url]
+                Divider()
+            }
+
+            Group {
+                if sourceWatcher.files.isEmpty {
+                    VStack {
+                        Spacer()
+                        Text("下载文件夹是空的 🎉")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                } else {
+                    List(sourceWatcher.files, selection: $selectionStore.selection) { item in
+                        FileRowView(item: item)
+                            .tag(item.url)
+                            .onDrag {
+                                // If the dragged row is part of the selection, drag all selected items.
+                                // SwiftUI onDrag only yields one primary provider, but we encode all
+                                // selected URLs as a space-separated string in the primary item so the
+                                // drop target can recover them. Falls back to the single item otherwise.
+                                let selectedURLs: [URL]
+                                if selectionStore.selection.contains(item.url) {
+                                    selectedURLs = sourceWatcher.files
+                                        .map(\.url)
+                                        .filter { selectionStore.selection.contains($0) }
+                                } else {
+                                    selectedURLs = [item.url]
+                                }
+                                // Use the primary dragged file's built-in provider.
+                                // Multi-URL is surfaced via the selection store on drop.
+                                let primary = selectedURLs.first ?? item.url
+                                return NSItemProvider(contentsOf: primary) ?? NSItemProvider()
                             }
-                            // Use the primary dragged file's built-in provider.
-                            // Multi-URL is surfaced via the selection store on drop.
-                            let primary = selectedURLs.first ?? item.url
-                            return NSItemProvider(contentsOf: primary) ?? NSItemProvider()
-                        }
-                        .gesture(
-                            TapGesture(count: 2).onEnded {
-                                NSWorkspace.shared.open(item.url)
-                            }
-                        )
+                            .gesture(
+                                TapGesture(count: 2).onEnded {
+                                    NSWorkspace.shared.open(item.url)
+                                }
+                            )
+                    }
+                    .listStyle(.plain)
                 }
-                .listStyle(.plain)
             }
         }
+    }
+}
+
+// MARK: - Intro Banner
+
+private struct IntroBannerView: View {
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "info.circle")
+                .foregroundStyle(.blue)
+                .font(.caption)
+            Text("Scoot 常驻菜单栏，下载完文件点这里快速分拣")
+                .font(.caption)
+                .foregroundStyle(.primary)
+            Spacer()
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color.blue.opacity(0.08))
     }
 }
 

@@ -39,8 +39,14 @@ struct BottomBarView: View {
             }
             .disabled(!appModel.canUndo)
 
-            // Error message
-            if let msg = appModel.errorMessage {
+            // Hint message (guidance) shown above error messages
+            if let hint = appModel.hintMessage {
+                Text(hint)
+                    .foregroundStyle(.orange)
+                    .font(.caption)
+                    .lineLimit(1)
+                    .transition(.opacity)
+            } else if let msg = appModel.errorMessage {
                 Text(msg)
                     .foregroundStyle(.red)
                     .font(.caption)
@@ -66,6 +72,7 @@ struct BottomBarView: View {
         }
         .padding(.horizontal, 10)
         .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.2), value: appModel.hintMessage)
     }
 
     private func chooseSourceFolder() {
