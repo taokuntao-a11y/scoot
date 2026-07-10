@@ -19,7 +19,6 @@ struct DestinationGridView: View {
 
     var body: some View {
         if destinationStore.destinations.isEmpty {
-            // 2a: Guide card when no destinations exist
             EmptyDestinationsGuideView {
                 addDestination()
             }
@@ -33,7 +32,6 @@ struct DestinationGridView: View {
                             movedCount: highlightedID == dest.id ? movedCount : 0,
                             isHovered: hoveredID == dest.id
                         )
-                        // 2b: Shake when no selection
                         .modifier(ShakeEffect(
                             shakes: 3,
                             animatableData: shakingID == dest.id ? shakeOffset : 0
@@ -41,7 +39,6 @@ struct DestinationGridView: View {
                         .onTapGesture {
                             moveSelected(to: dest)
                         }
-                        // 2d: Hover — deepen background + pointing hand cursor
                         .onHover { inside in
                             if inside {
                                 hoveredID = dest.id
@@ -60,24 +57,6 @@ struct DestinationGridView: View {
                             }
                         }
                     }
-
-                    // Add destination "+" tile
-                    Button {
-                        addDestination()
-                    } label: {
-                        VStack(spacing: 4) {
-                            Image(systemName: "plus.circle.dashed")
-                                .font(.system(size: 28))
-                                .foregroundStyle(.secondary)
-                            Text("添加目标")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 80)
-                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
-                    }
-                    .buttonStyle(.plain)
                 }
                 .padding(12)
             }
@@ -92,7 +71,7 @@ struct DestinationGridView: View {
             .filter { selectionStore.selection.contains($0) }
 
         guard !selectedURLs.isEmpty else {
-            // 2b: Shake tile + show bottom-bar hint
+            // Shake tile + flash StepperBar step ①
             let targetID = dest.id
             shakingID = targetID
             shakeOffset = 0
@@ -106,7 +85,7 @@ struct DestinationGridView: View {
                     shakingID = nil
                 }
             }
-            appModel.showHint("先在左侧选中要移动的文件")
+            appModel.flashStepOne()
             return
         }
 
@@ -159,7 +138,6 @@ struct DestinationGridView: View {
         selectionStore.selection = []
         movedCount = urls.count
         flashHighlight(for: dest)
-        // 2c: Animate list changes (row removal) naturally
         withAnimation {
             sourceWatcher.reload()
         }
@@ -176,8 +154,6 @@ struct DestinationGridView: View {
         }
     }
 
-    // MARK: - Bug 1 fix: NSOpenPanel key-window restoration
-
     private func addDestination() {
         if let url = pickFolder(prompt: "添加目标文件夹") {
             destinationStore.add(url: url)
@@ -185,7 +161,7 @@ struct DestinationGridView: View {
     }
 }
 
-// MARK: - Empty Guide Card (2a)
+// MARK: - Empty Guide Card
 
 private struct EmptyDestinationsGuideView: View {
     let onAdd: () -> Void
@@ -220,7 +196,7 @@ private struct EmptyDestinationsGuideView: View {
     }
 }
 
-// MARK: - Shake GeometryEffect (2b)
+// MARK: - Shake GeometryEffect
 
 private struct ShakeEffect: GeometryEffect {
     var shakes: Int = 3
@@ -241,7 +217,6 @@ struct DestinationTileView: View {
     let movedCount: Int
     let isHovered: Bool
 
-    // 2c: Scale bounce on move success
     @State private var bounceScale: CGFloat = 1.0
 
     var body: some View {
@@ -276,7 +251,6 @@ struct DestinationTileView: View {
         .animation(.easeInOut(duration: 0.15), value: isHovered)
         .onChange(of: isHighlighted) { newVal in
             if newVal {
-                // Spring bounce: 1.0 → 1.06 → 1.0
                 withAnimation(.spring(response: 0.15, dampingFraction: 0.45)) {
                     bounceScale = 1.06
                 }

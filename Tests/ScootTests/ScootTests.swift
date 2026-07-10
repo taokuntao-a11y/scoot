@@ -222,3 +222,104 @@ struct MoveEngineTests {
         #expect(!engine.canUndo)
     }
 }
+
+// MARK: - MoveLog tests
+
+@Suite("MoveLog") @MainActor
+struct MoveLogTests {
+
+    /// Temporary JSONL file URL for an isolated test run.
+    private func tempFileURL() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("ScootLogTests-\(UUID().uuidString).jsonl")
+    }
+
+    @Test func recordsEntry() {
+        let url = tempFileURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let log = MoveLog(fileURL: url)
+        let entry = LogEntry(fileName: "report.pdf", destName: "合同")
+        log.record(entry)
+
+        #expect(log.entries.count == 1)
+        #expect(log.entries[0].fileName == "report.pdf")
+        #expect(log.entries[0].destName == "合同")
+        #expect(!log.entries[0].isUndo)
+    }
+
+    @Test func newestFirst() {
+        let url = tempFileURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let log = MoveLog(fileURL: url)
+        log.record(LogEntry(fileName: "a.pdf", destName: "A"))
+        log.record(LogEntry(fileName: "b.pdf", destName: "B"))
+
+        #expect(log.entries[0].fileName == "b.pdf")
+        #expect(log.entries[1].fileName == "a.pdf")
+    }
+
+    @Test func truncatesTo500() {
+        let url = tempFileURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let log = MoveLog(fileURL: url)
+        for i in 0..<510 {
+            log.record(LogEntry(fileName: "file\(i).txt", destName: "dst"))
+        }
+
+        #expect(log.entries.count == MoveLog.maxEntries)
+        // Newest entry should be file509
+        #expect(log.entries[0].fileName == "file509.txt")
+    }
+
+    @Test func undoDirectionFlagIsSet() {
+        let url = tempFileURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let log = MoveLog(fileURL: url)
+        let undoEntry = LogEntry(fileName: "report.pdf", destName: "合同", isUndo: true)
+        log.record(undoEntry)
+
+        #expect(log.entries[0].isUndo == true)
+    }
+
+    @Test func jsonlPersistenceRoundTrip() {
+        let url = tempFileURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        // Write via first instance
+        do {
+            let log = MoveLog(fileURL: url)
+            log.record(LogEntry(fileName: "alpha.zip", destName: "存档"))
+            log.record(LogEntry(fileName: "beta.zip", destName: "备份", isUndo: true))
+        }
+
+        // Read via second instance (simulates app restart)
+        let log2 = MoveLog(fileURL: url)
+        #expect(log2.entries.count == 2)
+        // Newest is beta.zip (last recorded)
+        #expect(log2.entries[0].fileName == "beta.zip")
+        #expect(log2.entries[0].isUndo == true)
+        #expect(log2.entries[1].fileName == "alpha.zip")
+    }
+
+    @Test func jsonlTruncationPreservesNewest() {
+        let url = tempFileURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        // Write 505 entries
+        do {
+            let log = MoveLog(fileURL: url)
+            for i in 0..<505 {
+                log.record(LogEntry(fileName: "f\(i).txt", destName: "d"))
+            }
+        }
+
+        // Reload — should load exactly maxEntries (500) and keep newest
+        let log2 = MoveLog(fileURL: url)
+        #expect(log2.entries.count == MoveLog.maxEntries)
+        #expect(log2.entries[0].fileName == "f504.txt")
+    }
+}
