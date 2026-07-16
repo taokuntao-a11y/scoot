@@ -11,7 +11,9 @@ macOS 菜单栏工具：下载文件快速分拣。左栏源文件夹（默认 ~
 - SPM 可执行目标 + build 脚本组装 .app（本机仅 CLT，无 Xcode）
 - 菜单栏 MenuBarExtra 空壳跑通
 
-### Phase 1 — MVP（当前）
+### Phase 1 — MVP ✅（v0.1.0 发布，v0.2.0 验收通过 2026-07-16）
+含 Phase 1.1 验收修复（NSOpenPanel 失焦灰度 bug、UX 引导动效）、Phase 1.2 UI 明晰化（三步状态条、双栏标题、操作日志、主窗口）、文件监控 MainActor 隔离闪退修复。
+
 - SourceWatcher：监控源文件夹，最新文件倒序列表，过滤隐藏/未完成下载
 - DestinationStore：目标文件夹增删，JSON 持久化
 - MoveEngine：移动 + 重名自动加序号 + 撤销栈
