@@ -52,16 +52,17 @@ public final class SourceWatcher: ObservableObject {
         guard fd >= 0 else { return }
         watchedFD = fd
 
+        // Handlers formed in this @MainActor context are MainActor-isolated under
+        // Swift 6; dispatching them on a background queue trips the runtime
+        // isolation assertion (SIGTRAP), so the source must run on the main queue.
         let src = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fd,
             eventMask: .write,
-            queue: .global()
+            queue: .main
         )
 
         src.setEventHandler { [weak self] in
-            Task { @MainActor [weak self] in
-                self?.scheduleReload()
-            }
+            self?.scheduleReload()
         }
 
         // fd is closed in the cancel handler; avoid closing it twice in deinit
