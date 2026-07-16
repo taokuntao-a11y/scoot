@@ -21,10 +21,10 @@ macOS 菜单栏工具：下载文件快速分拣。左栏源文件夹（默认 ~
 - 单元测试：重名处理、撤销
 - 验收标准见 docs/SPEC-phase1.md
 
-### Phase 2 — 顺手度（待验收后启动）
-- 全局快捷键呼出
-- 多源文件夹切换
-- Finder 右键"发送到…"（FinderSync 扩展，需装完整 Xcode）
+### Phase 2 — 顺手度（进行中，规格见 docs/SPEC-phase2.md）
+- 全局快捷键呼出（KeyboardShortcuts + MenuBarExtraAccess，默认 ⌥⇧S）
+- 多源文件夹切换（SourceStore，左栏头部下拉）
+- ~~Finder 右键"发送到…"~~ → 顺延：FinderSync 扩展 target 无法用 CLT 构建，需先装完整 Xcode
 
 ### Phase 3 — 智能层（待验收后启动）
 - LLM 归档目标建议（薄 adapter 调 API）

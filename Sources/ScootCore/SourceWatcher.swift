@@ -4,9 +4,8 @@ import Foundation
 @MainActor
 public final class SourceWatcher: ObservableObject {
     @Published public var files: [FileItem] = []
-    @Published public var sourcePath: String {
+    public var sourcePath: String {
         didSet {
-            UserDefaults.standard.set(sourcePath, forKey: "sourcePath")
             rebuildWatcher()
             reload()
         }
@@ -24,10 +23,9 @@ public final class SourceWatcher: ObservableObject {
         URL(fileURLWithPath: sourcePath, isDirectory: true)
     }
 
-    public init() {
-        let defaultPath = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Downloads").path
-        sourcePath = UserDefaults.standard.string(forKey: "sourcePath") ?? defaultPath
+    /// Designated init — path is supplied by App layer (SourceStore.activeSource.path).
+    public init(path: String) {
+        self.sourcePath = path
         rebuildWatcher()
         reload()
     }
