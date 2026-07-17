@@ -22,8 +22,25 @@ final class AppModel: ObservableObject {
     /// True while an AI request is in flight; disables AI action buttons.
     @Published var aiIsBusy: Bool = false
 
+    /// Elapsed seconds since AI request started; incremented every second while busy.
+    @Published var aiElapsedSeconds: Int = 0
+
+    /// Action to cancel the current AI task (set by AIActionsView).
+    var aiCancelAction: (() -> Void)?
+
+    /// Non-nil for 1.6 s after a successful move/rename/undo; shown as bottom toast.
+    @Published var toastMessage: String? = nil
+
+    // MARK: - Watcher (weak; injected by ScootApp)
+
+    weak var watcher: SourceWatcher?
+
+    // MARK: - Private tasks
+
     private var completionTask: Task<Void, Never>?
     private var flashTask: Task<Void, Never>?
+    private var toastTask: Task<Void, Never>?
+    private var aiTimerTask: Task<Void, Never>?
 
     // MARK: - Move
 
@@ -33,21 +50,26 @@ final class AppModel: ObservableObject {
         lastBatchDescription = engine.lastBatchDescription
         errorMessage = result.errorSummary
 
-        // Log each moved file
-        let batchID = UUID()
-        for pair in result.moved {
-            moveLog.record(
+        if !result.moved.isEmpty {
+            // Optimistic removal from the file list
+            watcher?.removeImmediately(result.moved.map(\.from))
+
+            // Batch log
+            let batchID = UUID()
+            let logEntries = result.moved.map { pair in
                 LogEntry(
                     fileName: pair.from.lastPathComponent,
                     destName: destination.name,
                     batchID: batchID,
                     isUndo: false
                 )
-            )
-        }
+            }
+            moveLog.record(batch: logEntries)
 
-        // Drive StepperBar step-3 completion state
-        if !result.moved.isEmpty {
+            // Toast
+            let destName = destination.name
+            showToast("已移动 \(result.moved.count) 项 → \(destName)")
+
             showCompletion(count: result.moved.count)
         }
     }
@@ -60,17 +82,21 @@ final class AppModel: ObservableObject {
         lastBatchDescription = engine.lastBatchDescription
         errorMessage = result.errorSummary
 
-        // Log undo entries (pair.from = file in dest folder; pair.to = restored location)
-        let batchID = UUID()
-        for pair in result.moved {
-            moveLog.record(
+        if !result.moved.isEmpty {
+            // Undo restores files to original location — no optimistic removal.
+            // FS event will trigger a reload; just show a toast.
+            let batchID = UUID()
+            let logEntries = result.moved.map { pair in
                 LogEntry(
                     fileName: pair.from.lastPathComponent,
                     destName: pair.from.deletingLastPathComponent().lastPathComponent,
                     batchID: batchID,
                     isUndo: true
                 )
-            )
+            }
+            moveLog.record(batch: logEntries)
+
+            showToast("已撤销 \(result.moved.count) 项")
         }
     }
 
@@ -83,21 +109,48 @@ final class AppModel: ObservableObject {
         lastBatchDescription = engine.lastBatchDescription
         errorMessage = result.errorSummary
 
-        let batchID = UUID()
-        for pair in result.moved {
-            moveLog.record(
+        if !result.moved.isEmpty {
+            // Optimistic removal (renamed file stays in same folder but appears under new name;
+            // removing it avoids a stale row until the FS event fires).
+            watcher?.removeImmediately(result.moved.map(\.from))
+
+            let batchID = UUID()
+            let logEntries = result.moved.map { pair in
                 LogEntry(
                     fileName: pair.from.lastPathComponent,
                     destName: "重命名",
                     batchID: batchID,
                     isUndo: false
                 )
-            )
-        }
+            }
+            moveLog.record(batch: logEntries)
 
-        if !result.moved.isEmpty {
+            showToast("已重命名 \(result.moved.count) 项")
             showCompletion(count: result.moved.count)
         }
+    }
+
+    // MARK: - AI busy timer
+
+    func startAIBusy() {
+        aiIsBusy = true
+        aiElapsedSeconds = 0
+        aiTimerTask?.cancel()
+        aiTimerTask = Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard !Task.isCancelled else { break }
+                aiElapsedSeconds += 1
+            }
+        }
+    }
+
+    func stopAIBusy() {
+        aiTimerTask?.cancel()
+        aiTimerTask = nil
+        aiIsBusy = false
+        aiElapsedSeconds = 0
+        aiCancelAction = nil
     }
 
     // MARK: - StepperBar helpers
@@ -120,6 +173,16 @@ final class AppModel: ObservableObject {
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             guard !Task.isCancelled else { return }
             completionMoveCount = nil
+        }
+    }
+
+    private func showToast(_ message: String) {
+        toastMessage = message
+        toastTask?.cancel()
+        toastTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_600_000_000)
+            guard !Task.isCancelled else { return }
+            toastMessage = nil
         }
     }
 }

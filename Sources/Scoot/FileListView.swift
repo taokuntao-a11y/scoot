@@ -57,6 +57,7 @@ struct FileListView: View {
                             )
                     }
                     .listStyle(.plain)
+                    .animation(.easeInOut(duration: 0.25), value: sourceWatcher.files)
                 }
             }
         }
@@ -109,7 +110,7 @@ struct FileRowView: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(nsImage: NSWorkspace.shared.icon(forFile: item.url.path))
+            Image(nsImage: FileIconCache.icon(for: item.url, isDirectory: item.isDirectory))
                 .resizable()
                 .frame(width: 20, height: 20)
 

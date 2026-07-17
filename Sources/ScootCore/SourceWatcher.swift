@@ -15,7 +15,10 @@ public final class SourceWatcher: ObservableObject {
     private var watchedFD: Int32 = -1
     private var debounceTask: Task<Void, Never>?
 
-    private static let incompleteExtensions: Set<String> = [
+    /// Monotonically increasing counter; used to discard stale scan results.
+    private var generation: Int = 0
+
+    nonisolated static let incompleteExtensions: Set<String> = [
         ".download", ".crdownload", ".part", ".aria2"
     ]
 
@@ -81,10 +84,21 @@ public final class SourceWatcher: ObservableObject {
         }
     }
 
+    // MARK: Immediate removal (optimistic update)
+
+    /// Remove the given URLs from the in-memory list immediately without waiting
+    /// for a filesystem event.  Produces the "fly away" animation when paired with
+    /// a list .animation modifier.
+    public func removeImmediately(_ urls: [URL]) {
+        let set = Set(urls)
+        files = files.filter { !set.contains($0.url) }
+    }
+
     // MARK: Scanning
 
-    public func reload() {
-        let url = URL(fileURLWithPath: sourcePath, isDirectory: true)
+    /// Pure nonisolated scan — safe to call from any Task.
+    public nonisolated static func scan(path: String) -> [FileItem] {
+        let url = URL(fileURLWithPath: path, isDirectory: true)
         let keys: Set<URLResourceKey> = [
             .addedToDirectoryDateKey,
             .contentModificationDateKey,
@@ -97,8 +111,7 @@ public final class SourceWatcher: ObservableObject {
             includingPropertiesForKeys: Array(keys),
             options: .skipsHiddenFiles
         ) else {
-            files = []
-            return
+            return []
         }
 
         var result: [FileItem] = []
@@ -106,7 +119,7 @@ public final class SourceWatcher: ObservableObject {
             let name = entry.lastPathComponent
             guard !name.hasPrefix(".") else { continue }
             let lower = name.lowercased()
-            if Self.incompleteExtensions.contains(where: { lower.hasSuffix($0) }) { continue }
+            if incompleteExtensions.contains(where: { lower.hasSuffix($0) }) { continue }
 
             let rv = try? entry.resourceValues(forKeys: keys)
             let addedAt = rv?.addedToDirectoryDate ?? rv?.contentModificationDate ?? .distantPast
@@ -117,6 +130,22 @@ public final class SourceWatcher: ObservableObject {
         }
 
         result.sort { $0.addedAt > $1.addedAt }
-        files = Array(result.prefix(50))
+        return Array(result.prefix(50))
+    }
+
+    /// Triggers a background scan; result is published on MainActor.
+    /// Stale results (from cancelled/superseded scans) are discarded via generation counter.
+    public func reload() {
+        generation &+= 1
+        let myGeneration = generation
+        let path = sourcePath
+
+        Task.detached {
+            let result = SourceWatcher.scan(path: path)
+            await MainActor.run { [weak self] in
+                guard let self, self.generation == myGeneration else { return }
+                self.files = result
+            }
+        }
     }
 }

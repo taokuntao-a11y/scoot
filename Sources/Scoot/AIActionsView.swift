@@ -18,6 +18,8 @@ struct AIActionsView: View {
     @State private var archiveSuggestions: [(file: String, dest: String?)] = []
     @State private var renameSuggestions: [(file: String, newName: String)] = []
 
+    @State private var aiTask: Task<Void, Never>?
+
     var body: some View {
         HStack(spacing: 6) {
             // AI 分拣
@@ -88,20 +90,24 @@ struct AIActionsView: View {
         let fileNames = files.map { $0.lastPathComponent }
         let suggester = ArchiveSuggester(llm: llm)
 
-        appModel.aiIsBusy = true
+        appModel.startAIBusy()
         appModel.errorMessage = nil
 
-        Task { @MainActor in
-            defer { appModel.aiIsBusy = false }
+        let task = Task { @MainActor in
+            defer { appModel.stopAIBusy() }
             do {
                 let raw = try await suggester.suggest(fileNames: fileNames, destinations: targets)
-                // Build full suggestions with URL lookup
+                guard !Task.isCancelled else { return }
                 archiveSuggestions = raw
                 showArchiveSheet = true
+            } catch is CancellationError {
+                // Silent — user cancelled intentionally
             } catch {
                 appModel.errorMessage = error.localizedDescription
             }
         }
+        aiTask = task
+        appModel.aiCancelAction = { task.cancel() }
     }
 
     // MARK: - Rename action
@@ -122,19 +128,24 @@ struct AIActionsView: View {
         let fileNames = files.map { $0.lastPathComponent }
         let suggester = RenameSuggester(llm: llm)
 
-        appModel.aiIsBusy = true
+        appModel.startAIBusy()
         appModel.errorMessage = nil
 
-        Task { @MainActor in
-            defer { appModel.aiIsBusy = false }
+        let task = Task { @MainActor in
+            defer { appModel.stopAIBusy() }
             do {
                 let raw = try await suggester.suggest(fileNames: fileNames)
+                guard !Task.isCancelled else { return }
                 renameSuggestions = raw
                 showRenameSheet = true
+            } catch is CancellationError {
+                // Silent — user cancelled intentionally
             } catch {
                 appModel.errorMessage = error.localizedDescription
             }
         }
+        aiTask = task
+        appModel.aiCancelAction = { task.cancel() }
     }
 }
 

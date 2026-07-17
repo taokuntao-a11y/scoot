@@ -80,6 +80,11 @@ public struct AnthropicClient: LLMService {
         do {
             (data, response) = try await URLSession.shared.data(for: request)
         } catch {
+            // Normalize cancellation so callers can silently ignore user-initiated
+            // cancels; URLSession surfaces Task cancellation as URLError.cancelled.
+            if error is CancellationError || (error as? URLError)?.code == .cancelled {
+                throw CancellationError()
+            }
             throw LLMError.networkError(error)
         }
 

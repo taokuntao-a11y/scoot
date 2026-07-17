@@ -8,7 +8,7 @@ struct ScootApp: App {
     @StateObject private var sourceStore: SourceStore
     @StateObject private var sourceWatcher: SourceWatcher
     @StateObject private var destinationStore = DestinationStore()
-    @StateObject private var appModel = AppModel()
+    @StateObject private var appModel: AppModel
     @StateObject private var selectionStore = SelectionStore()
     @StateObject private var aiConfig = AIConfigStore()
 
@@ -19,8 +19,12 @@ struct ScootApp: App {
     init() {
         // Build SourceStore first so we can seed SourceWatcher with the active path.
         let store = SourceStore()
+        let watcher = SourceWatcher(path: store.activeSource.path)
+        let model = AppModel()
+        model.watcher = watcher
         _sourceStore = StateObject(wrappedValue: store)
-        _sourceWatcher = StateObject(wrappedValue: SourceWatcher(path: store.activeSource.path))
+        _sourceWatcher = StateObject(wrappedValue: watcher)
+        _appModel = StateObject(wrappedValue: model)
 
         // Register hotkey handler once at app launch (not inside body to avoid repeat registration).
         KeyboardShortcuts.onKeyUp(for: .togglePanel) {

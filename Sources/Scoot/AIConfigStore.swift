@@ -5,11 +5,10 @@ import SwiftUI
 // MARK: - AIConfigStore
 
 /// Persists AI configuration.
-/// API Key → Keychain (never UserDefaults).
+/// API Key → local credentials file (Application Support/Scoot/credentials.json, mode 0600).
 /// Base URL + model name → UserDefaults.
 @MainActor
 final class AIConfigStore: ObservableObject {
-    private static let accountKey = "anthropic-api-key"
     private static let baseURLDefaultsKey = "ai.baseURL"
     private static let modelDefaultsKey = "ai.model"
 
@@ -26,10 +25,25 @@ final class AIConfigStore: ObservableObject {
         didSet { UserDefaults.standard.set(model, forKey: Self.modelDefaultsKey) }
     }
 
+    // MARK: Storage
+
+    private let credentials: CredentialsFile
+
     // MARK: Init
 
-    init() {
-        hasKey = KeychainHelper.get(account: Self.accountKey) != nil
+    /// Designated init — storageDir is injectable for tests.
+    init(storageDir: URL? = nil) {
+        let dir: URL
+        if let provided = storageDir {
+            dir = provided
+        } else {
+            let appSupport = FileManager.default.urls(
+                for: .applicationSupportDirectory, in: .userDomainMask
+            ).first!
+            dir = appSupport.appendingPathComponent("Scoot")
+        }
+        credentials = CredentialsFile(storageDir: dir)
+        hasKey = credentials.hasKey()
         baseURL = UserDefaults.standard.string(forKey: Self.baseURLDefaultsKey) ?? Self.defaultBaseURL
         model = UserDefaults.standard.string(forKey: Self.modelDefaultsKey) ?? Self.defaultModel
     }
@@ -39,12 +53,12 @@ final class AIConfigStore: ObservableObject {
     func setKey(_ key: String) {
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        KeychainHelper.set(trimmed, account: Self.accountKey)
+        credentials.save(apiKey: trimmed)
         hasKey = true
     }
 
     func clearKey() {
-        KeychainHelper.delete(account: Self.accountKey)
+        credentials.delete()
         hasKey = false
     }
 
@@ -52,7 +66,7 @@ final class AIConfigStore: ObservableObject {
 
     /// Returns a configured AnthropicClient, or nil if no API key is stored.
     func makeLLMService() -> (any LLMService)? {
-        guard let key = KeychainHelper.get(account: Self.accountKey) else { return nil }
+        guard let key = credentials.read() else { return nil }
         let url = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         let effectiveURL = url.isEmpty ? Self.defaultBaseURL : url
         let effectiveModel = model.trimmingCharacters(in: .whitespacesAndNewlines)

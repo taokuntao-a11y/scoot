@@ -13,60 +13,109 @@ struct ContentView: View {
     @EnvironmentObject private var selectionStore: SelectionStore
 
     var body: some View {
-        VStack(spacing: 0) {
-            // ① StepperBar — top full-width strip
-            StepperBar()
-            Divider()
+        ZStack(alignment: .bottom) {
+            // MARK: Main panel content
+            VStack(spacing: 0) {
+                // ① StepperBar — top full-width strip
+                StepperBar()
+                Divider()
 
-            // ② Split pane with headers
-            HStack(spacing: 0) {
-                // Left pane — source switcher header
-                VStack(spacing: 0) {
-                    SourceHeaderView(badge: selectionBadge)
+                // ② Split pane with headers
+                HStack(spacing: 0) {
+                    // Left pane — source switcher header
+                    VStack(spacing: 0) {
+                        SourceHeaderView(badge: selectionBadge)
+                        Divider()
+                        FileListView()
+                    }
+                    .frame(width: 320)
+
                     Divider()
-                    FileListView()
+
+                    // Right pane
+                    VStack(spacing: 0) {
+                        PaneHeaderView(title: "目标位置") {
+                            Button {
+                                addDestination()
+                            } label: {
+                                Image(systemName: "plus")
+                                    .font(.caption)
+                                    .padding(4)
+                            }
+                            .buttonStyle(.plain)
+                            .help("添加目标文件夹")
+                        }
+                        Divider()
+                        DestinationGridView()
+                    }
                 }
-                .frame(width: 320)
 
                 Divider()
 
-                // Right pane
-                VStack(spacing: 0) {
-                    PaneHeaderView(title: "目标位置") {
-                        Button {
-                            addDestination()
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.caption)
-                                .padding(4)
-                        }
-                        .buttonStyle(.plain)
-                        .help("添加目标文件夹")
-                    }
-                    Divider()
-                    DestinationGridView()
-                }
+                // ③ MoveLog drawer
+                MoveLogDrawer()
+
+                Divider()
+
+                // ④ Bottom bar
+                BottomBarView()
+                    .frame(height: 36)
+            }
+            // Sync activeSource → watcher + clear selection. Lives here (not on the
+            // MenuBarExtra scene) so it also fires when the source is switched from
+            // the main window; guarded so panel + main window don't double-apply.
+            .onChange(of: sourceStore.activeSource) { newSource in
+                guard sourceWatcher.sourcePath != newSource.path else { return }
+                sourceWatcher.sourcePath = newSource.path
+                selectionStore.selection = []
             }
 
-            Divider()
+            // MARK: AI busy overlay
+            if appModel.aiIsBusy {
+                ZStack {
+                    Color.black.opacity(0.35)
+                        .ignoresSafeArea()
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .scaleEffect(1.2)
+                        Text("AI 思考中… \(appModel.aiElapsedSeconds) 秒")
+                            .foregroundStyle(.white)
+                            .font(.subheadline)
+                        Button("取消") {
+                            appModel.aiCancelAction?()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.white.opacity(0.25))
+                        .foregroundStyle(.white)
+                    }
+                }
+                .transition(.opacity)
+            }
 
-            // ③ MoveLog drawer
-            MoveLogDrawer()
-
-            Divider()
-
-            // ④ Bottom bar
-            BottomBarView()
-                .frame(height: 36)
+            // MARK: Toast
+            if let msg = appModel.toastMessage {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Text(msg)
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(.regularMaterial, in: Capsule())
+                .shadow(radius: 4)
+                .padding(.bottom, 44)
+                .allowsHitTesting(false)
+                .transition(.asymmetric(
+                    insertion: .scale(scale: 0.85).combined(with: .opacity),
+                    removal: .opacity
+                ))
+                .id(msg)
+            }
         }
-        // Sync activeSource → watcher + clear selection. Lives here (not on the
-        // MenuBarExtra scene) so it also fires when the source is switched from
-        // the main window; guarded so panel + main window don't double-apply.
-        .onChange(of: sourceStore.activeSource) { newSource in
-            guard sourceWatcher.sourcePath != newSource.path else { return }
-            sourceWatcher.sourcePath = newSource.path
-            selectionStore.selection = []
-        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: appModel.toastMessage)
+        .animation(.easeInOut(duration: 0.2), value: appModel.aiIsBusy)
     }
 
     // MARK: - Helpers
@@ -360,6 +409,10 @@ struct SettingsView: View {
                                 aiConfig.model = val.isEmpty ? AIConfigStore.defaultModel : val
                             }
                     }
+
+                    Text("Key 保存在本机 Application Support，仅当前用户可读；不会上传")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
                     Text("AI 功能只发送文件名和目标文件夹名，不读取文件内容")
                         .font(.caption)

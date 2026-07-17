@@ -59,10 +59,21 @@ public final class MoveLog: ObservableObject {
 
     /// Append a new entry (newest-first in memory; oldest-first on disk).
     public func record(_ entry: LogEntry) {
-        entries.insert(entry, at: 0)
-        appendLine(entry)
-        if entries.count > Self.maxEntries {
-            entries = Array(entries.prefix(Self.maxEntries))
+        record(batch: [entry])
+    }
+
+    /// Append multiple entries in a single disk write (newest-first in memory).
+    /// The last element of `entries` is treated as the newest and lands at index 0.
+    public func record(batch entries: [LogEntry]) {
+        guard !entries.isEmpty else { return }
+        // Iterate forward so each successive insert pushes older entries down;
+        // the last entry ends up at index 0 (newest-first convention).
+        for entry in entries {
+            self.entries.insert(entry, at: 0)
+        }
+        appendLines(entries)
+        if self.entries.count > Self.maxEntries {
+            self.entries = Array(self.entries.prefix(Self.maxEntries))
             rewriteFile()
         }
     }
@@ -100,17 +111,27 @@ public final class MoveLog: ObservableObject {
     }
 
     private func appendLine(_ entry: LogEntry) {
-        guard let data = try? Self.encoder.encode(entry),
-              let json = String(data: data, encoding: .utf8) else { return }
-        let line = json + "\n"
-        guard let lineData = line.data(using: .utf8) else { return }
+        appendLines([entry])
+    }
+
+    /// Appends multiple entries in a single FileHandle write (oldest-first ordering preserved).
+    private func appendLines(_ newEntries: [LogEntry]) {
+        let lines = newEntries.compactMap { e -> String? in
+            guard let data = try? Self.encoder.encode(e),
+                  let json = String(data: data, encoding: .utf8) else { return nil }
+            return json
+        }
+        guard !lines.isEmpty else { return }
+        let block = lines.joined(separator: "\n") + "\n"
+        guard let blockData = block.data(using: .utf8) else { return }
+
         if FileManager.default.fileExists(atPath: fileURL.path) {
             guard let handle = try? FileHandle(forWritingTo: fileURL) else { return }
             handle.seekToEndOfFile()
-            handle.write(lineData)
+            handle.write(blockData)
             try? handle.close()
         } else {
-            try? lineData.write(to: fileURL, options: .atomic)
+            try? blockData.write(to: fileURL, options: .atomic)
         }
     }
 
