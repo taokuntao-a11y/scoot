@@ -217,6 +217,7 @@ extension PaneHeaderView where Trailing == EmptyView {
 
 struct BottomBarView: View {
     @EnvironmentObject private var appModel: AppModel
+    @EnvironmentObject private var aiConfig: AIConfigStore
     @Environment(\.openWindow) private var openWindow
 
     @State private var showSettingsPopover = false
@@ -244,6 +245,11 @@ struct BottomBarView: View {
 
             Spacer()
 
+            // AI action buttons
+            AIActionsView()
+
+            Spacer()
+
             // Open main window
             Button {
                 openWindow(id: "main")
@@ -253,7 +259,7 @@ struct BottomBarView: View {
             }
             .buttonStyle(.plain)
 
-            // Settings (gear) → quick shortcut recorder popover
+            // Settings (gear) → two-section settings popover
             Button {
                 showSettingsPopover.toggle()
             } label: {
@@ -262,7 +268,8 @@ struct BottomBarView: View {
             }
             .buttonStyle(.plain)
             .popover(isPresented: $showSettingsPopover, arrowEdge: .top) {
-                ShortcutSettingsView()
+                SettingsView()
+                    .environmentObject(aiConfig)
             }
 
             // Quit
@@ -276,20 +283,96 @@ struct BottomBarView: View {
     }
 }
 
-// MARK: - ShortcutSettingsView
+// MARK: - SettingsView
 
-struct ShortcutSettingsView: View {
+/// Two-section settings popover: 快捷键 + AI 配置.
+struct SettingsView: View {
+    @EnvironmentObject private var aiConfig: AIConfigStore
+
+    @State private var pendingKey: String = ""
+    @State private var baseURLInput: String = ""
+    @State private var modelInput: String = ""
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("快捷键设置")
-                .font(.headline)
-            Divider()
-            KeyboardShortcuts.Recorder("呼出面板", name: .togglePanel)
-            Text("在任意应用前台按下快捷键即可呼出/收起 Scoot 面板")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+
+                // MARK: 快捷键
+                Group {
+                    Text("快捷键")
+                        .font(.headline)
+                    Divider()
+                    KeyboardShortcuts.Recorder("呼出面板", name: .togglePanel)
+                    Text("在任意应用前台按下快捷键即可呼出/收起 Scoot 面板")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                // MARK: AI 配置
+                Group {
+                    Text("AI 配置")
+                        .font(.headline)
+                    Divider()
+
+                    // API Key row
+                    if aiConfig.hasKey {
+                        HStack {
+                            Text("API Key")
+                                .frame(width: 80, alignment: .leading)
+                            Text("已配置 ●●●●●●●●")
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button("清除") {
+                                aiConfig.clearKey()
+                                pendingKey = ""
+                            }
+                            .foregroundStyle(.red)
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("API Key")
+                            SecureField("粘贴 Anthropic API Key", text: $pendingKey)
+                                .textFieldStyle(.roundedBorder)
+                            Button("保存") {
+                                aiConfig.setKey(pendingKey)
+                                pendingKey = ""
+                            }
+                            .disabled(pendingKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                    }
+
+                    // Base URL
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Base URL")
+                        TextField(AIConfigStore.defaultBaseURL, text: $baseURLInput)
+                            .textFieldStyle(.roundedBorder)
+                            .onChange(of: baseURLInput) { val in
+                                aiConfig.baseURL = val.isEmpty ? AIConfigStore.defaultBaseURL : val
+                            }
+                    }
+
+                    // Model
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("模型名称")
+                        TextField(AIConfigStore.defaultModel, text: $modelInput)
+                            .textFieldStyle(.roundedBorder)
+                            .onChange(of: modelInput) { val in
+                                aiConfig.model = val.isEmpty ? AIConfigStore.defaultModel : val
+                            }
+                    }
+
+                    Text("AI 功能只发送文件名和目标文件夹名，不读取文件内容")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding()
         }
-        .padding()
-        .frame(width: 300)
+        .frame(width: 340)
+        .onAppear {
+            // Populate editable fields from current config
+            baseURLInput = aiConfig.baseURL == AIConfigStore.defaultBaseURL ? "" : aiConfig.baseURL
+            modelInput = aiConfig.model == AIConfigStore.defaultModel ? "" : aiConfig.model
+        }
     }
 }

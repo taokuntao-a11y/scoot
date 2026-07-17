@@ -87,6 +87,34 @@ public final class MoveEngine: @unchecked Sendable {
         return MoveResult(moved: moved, errors: errors)
     }
 
+    /// Rename files in-place (same directory). Pushes onto the shared undo stack.
+    /// - Parameter pairs: Each tuple contains the current URL and the desired new name (basename only).
+    /// - Returns: MoveResult where `moved.from` = original URL, `moved.to` = renamed URL.
+    public func rename(_ pairs: [(url: URL, newName: String)]) -> MoveResult {
+        var moved: [(from: URL, to: URL)] = []
+        var errors: [(url: URL, error: any Error)] = []
+
+        for pair in pairs {
+            let dir = pair.url.deletingLastPathComponent()
+            let dest = uniqueDestinationURL(for: pair.newName, in: dir)
+            do {
+                try FileManager.default.moveItem(at: pair.url, to: dest)
+                moved.append((from: pair.url, to: dest))
+            } catch {
+                errors.append((url: pair.url, error: error))
+            }
+        }
+
+        if !moved.isEmpty {
+            undoStack.append(moved)
+            if undoStack.count > maxUndoDepth {
+                undoStack.removeFirst()
+            }
+        }
+
+        return MoveResult(moved: moved, errors: errors)
+    }
+
     /// Reverse the last batch. Returns nil if nothing to undo.
     @discardableResult
     public func undo() -> MoveResult? {
@@ -97,8 +125,11 @@ public final class MoveEngine: @unchecked Sendable {
         var errors: [(url: URL, error: any Error)] = []
 
         for pair in batch.reversed() {
+            // Restore to the original name and directory (pair.from).
+            // Using pair.from.lastPathComponent (original name) ensures rename undo
+            // restores the original filename, not the post-rename filename.
             let dest = uniqueDestinationURL(
-                for: pair.to.lastPathComponent,
+                for: pair.from.lastPathComponent,
                 in: pair.from.deletingLastPathComponent()
             )
             do {

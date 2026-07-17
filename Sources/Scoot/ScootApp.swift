@@ -10,6 +10,7 @@ struct ScootApp: App {
     @StateObject private var destinationStore = DestinationStore()
     @StateObject private var appModel = AppModel()
     @StateObject private var selectionStore = SelectionStore()
+    @StateObject private var aiConfig = AIConfigStore()
 
     // Observed (not @State) so the hotkey callback can flip panel visibility
     // from outside the view hierarchy and still invalidate the scene.
@@ -55,6 +56,7 @@ struct ScootApp: App {
             .environmentObject(appModel)
             .environmentObject(selectionStore)
             .environmentObject(appModel.moveLog)
+            .environmentObject(aiConfig)
     }
 }
 

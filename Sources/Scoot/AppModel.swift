@@ -19,6 +19,9 @@ final class AppModel: ObservableObject {
     /// Briefly true when a tile is tapped with no selection; StepperBar flashes step ①.
     @Published var stepOneFlash: Bool = false
 
+    /// True while an AI request is in flight; disables AI action buttons.
+    @Published var aiIsBusy: Bool = false
+
     private var completionTask: Task<Void, Never>?
     private var flashTask: Task<Void, Never>?
 
@@ -68,6 +71,32 @@ final class AppModel: ObservableObject {
                     isUndo: true
                 )
             )
+        }
+    }
+
+    // MARK: - Rename
+
+    /// Rename files in-place via MoveEngine and record log entries.
+    func rename(_ pairs: [(url: URL, newName: String)]) {
+        let result = engine.rename(pairs)
+        canUndo = engine.canUndo
+        lastBatchDescription = engine.lastBatchDescription
+        errorMessage = result.errorSummary
+
+        let batchID = UUID()
+        for pair in result.moved {
+            moveLog.record(
+                LogEntry(
+                    fileName: pair.from.lastPathComponent,
+                    destName: "重命名",
+                    batchID: batchID,
+                    isUndo: false
+                )
+            )
+        }
+
+        if !result.moved.isEmpty {
+            showCompletion(count: result.moved.count)
         }
     }
 
