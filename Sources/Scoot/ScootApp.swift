@@ -34,9 +34,16 @@ struct ScootApp: App {
 
     var body: some Scene {
         // ── MenuBar panel ────────────────────────────────────────────────
-        MenuBarExtra("Scoot", systemImage: "arrow.right.doc.on.clipboard") {
+        MenuBarExtra {
             panelContent
                 .frame(width: 640, height: 520)
+        } label: {
+            // Custom label (instead of the `systemImage:` initializer) so we can
+            // hang a launch-time `.task` on it: the menu-bar label renders at app
+            // launch, so it's a reliable place to open the main window once. That
+            // gives users a real native window + Dock icon (via MainWindowObserverView)
+            // instead of a menu-bar-only app that looks like nothing launched.
+            MenuBarLabel()
         }
         .menuBarExtraAccess(isPresented: $hotkeyController.isPanelPresented)
         .menuBarExtraStyle(.window)
@@ -61,6 +68,26 @@ struct ScootApp: App {
             .environmentObject(selectionStore)
             .environmentObject(appModel.moveLog)
             .environmentObject(aiConfig)
+    }
+}
+
+// MARK: - MenuBarLabel
+
+/// The menu-bar icon. Opens the main window once at launch so the app presents a
+/// real, interactive native window on first run rather than a hidden menu-bar-only
+/// process. A single `Window` scene is single-instance, so re-opening it just
+/// focuses the existing window — safe if it were ever called twice.
+private struct MenuBarLabel: View {
+    @Environment(\.openWindow) private var openWindow
+    @State private var didOpenAtLaunch = false
+
+    var body: some View {
+        Image(systemName: "arrow.right.doc.on.clipboard")
+            .task {
+                guard !didOpenAtLaunch else { return }
+                didOpenAtLaunch = true
+                openWindow(id: "main")
+            }
     }
 }
 
