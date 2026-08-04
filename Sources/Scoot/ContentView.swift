@@ -297,6 +297,9 @@ struct BottomBarView: View {
             // AI action buttons
             AIActionsView()
 
+            // Slim (compress) action
+            SlimActionsView()
+
             Spacer()
 
             // Open main window

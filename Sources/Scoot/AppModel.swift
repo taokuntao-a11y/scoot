@@ -28,6 +28,13 @@ final class AppModel: ObservableObject {
     /// Action to cancel the current AI task (set by AIActionsView).
     var aiCancelAction: (() -> Void)?
 
+    /// True while a Slim (compression) batch is running; separate from aiIsBusy
+    /// since the two features are independent and shouldn't block each other's UI.
+    @Published var slimIsBusy: Bool = false
+
+    /// Action to cancel the current Slim task.
+    var slimCancelAction: (() -> Void)?
+
     /// Non-nil for 1.6 s after a successful move/rename/undo; shown as bottom toast.
     @Published var toastMessage: String? = nil
 
@@ -41,6 +48,7 @@ final class AppModel: ObservableObject {
     private var flashTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
     private var aiTimerTask: Task<Void, Never>?
+    private var slimTask: Task<Void, Never>?
 
     // MARK: - Move
 
@@ -128,6 +136,78 @@ final class AppModel: ObservableObject {
             showToast("已重命名 \(result.moved.count) 项")
             showCompletion(count: result.moved.count)
         }
+    }
+
+    // MARK: - Slim (compress)
+
+    /// Compresses each slimmable file to a sibling "<stem>_slim<ext>" file via the
+    /// bundled `slim` CLI. Runs sequentially and aggregates results into one toast +
+    /// one moveLog batch. Slim never deletes/replaces the original, so no optimistic
+    /// removal — the FS watcher will pick up the new "_slim" file on its own.
+    func slim(_ items: [URL], quality: String = "balanced") {
+        let targets = items.filter { SlimService.canSlim($0) }
+        guard !targets.isEmpty else {
+            errorMessage = "所选文件均不支持压缩"
+            return
+        }
+
+        let service = SlimService()
+        slimIsBusy = true
+        errorMessage = nil
+
+        let task = Task { @MainActor in
+            defer {
+                slimIsBusy = false
+                slimCancelAction = nil
+            }
+
+            var successes: [(url: URL, result: SlimResult)] = []
+            var failures: [(url: URL, error: any Error)] = []
+
+            for item in targets {
+                guard !Task.isCancelled else { return }
+                let ext = item.pathExtension
+                let stem = item.deletingPathExtension().lastPathComponent
+                let dir = item.deletingLastPathComponent()
+                let outputName = ext.isEmpty ? "\(stem)_slim" : "\(stem)_slim.\(ext)"
+                let output = uniqueDestinationURL(for: outputName, in: dir)
+
+                do {
+                    let result = try await service.compress(item, to: output, quality: quality)
+                    successes.append((url: item, result: result))
+                } catch is CancellationError {
+                    return
+                } catch {
+                    failures.append((url: item, error: error))
+                }
+            }
+
+            guard !Task.isCancelled else { return }
+
+            if !successes.isEmpty {
+                let batchID = UUID()
+                let logEntries = successes.map { pair in
+                    LogEntry(
+                        fileName: pair.url.lastPathComponent,
+                        destName: "压缩",
+                        batchID: batchID,
+                        isUndo: false
+                    )
+                }
+                moveLog.record(batch: logEntries)
+
+                let savedMB = successes.reduce(0.0) { $0 + max(0, $1.result.inputSizeMB - $1.result.outputSizeMB) }
+                showToast(String(format: "已压缩 %d 项，共省 %.1f MB", successes.count, savedMB))
+                showCompletion(count: successes.count)
+            }
+
+            if !failures.isEmpty {
+                let names = failures.map { $0.url.lastPathComponent }.joined(separator: ", ")
+                errorMessage = "压缩失败: \(names)"
+            }
+        }
+        slimTask = task
+        slimCancelAction = { task.cancel() }
     }
 
     // MARK: - AI busy timer
