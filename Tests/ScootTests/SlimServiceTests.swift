@@ -161,6 +161,51 @@ struct SlimLocateBinaryTests {
         #expect(found == bin)
     }
 
+    @Test func findsBinaryOnPATH() throws {
+        // Point PATH at a temp dir containing a dummy executable named "slim",
+        // with no SCOOT_SLIM_BIN override and a nonexistent dev fallback — the
+        // only way this can resolve is via the PATH scan branch.
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ScootSlimPathTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let bin = dir.appendingPathComponent("slim")
+        let script = "#!/bin/sh\necho '{}'\n"
+        try script.write(to: bin, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: bin.path)
+
+        let found = SlimService.locateBinary(
+            bundle: Bundle(for: DummyClassForBundleLookup.self),
+            environment: ["PATH": "\(dir.path):/usr/bin:/bin"],
+            devFallback: "/nonexistent/dev/fallback/slim"
+        )
+        #expect(found == bin)
+    }
+
+    @Test func envOverrideWinsOverPATH() throws {
+        // SCOOT_SLIM_BIN takes priority even when a "slim" also sits on PATH.
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ScootSlimPathPriorityTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let onPathBin = dir.appendingPathComponent("slim")
+        try "#!/bin/sh\necho '{}'\n".write(to: onPathBin, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: onPathBin.path)
+
+        let overrideBin = dir.appendingPathComponent("override-slim")
+        try "#!/bin/sh\necho '{}'\n".write(to: overrideBin, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: overrideBin.path)
+
+        let found = SlimService.locateBinary(
+            bundle: Bundle(for: DummyClassForBundleLookup.self),
+            environment: ["SCOOT_SLIM_BIN": overrideBin.path, "PATH": dir.path],
+            devFallback: "/nonexistent/dev/fallback/slim"
+        )
+        #expect(found == overrideBin)
+    }
+
     @Test func returnsNilWhenNothingFound() {
         let found = SlimService.locateBinary(
             bundle: Bundle(for: DummyClassForBundleLookup.self),

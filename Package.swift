@@ -9,6 +9,8 @@ let package = Package(
         // Pin to the last CLT-compatible release (1.15.0).
         .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", exact: "1.15.0"),
         .package(url: "https://github.com/orchetect/MenuBarExtraAccess", from: "1.0.0"),
+        // Pure Swift, no macros — builds fine under Command Line Tools.
+        .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
     ],
     targets: [
         .target(
@@ -24,9 +26,17 @@ let package = Package(
             ],
             path: "Sources/Scoot"
         ),
+        .executableTarget(
+            name: "ScootCLI",
+            dependencies: [
+                "ScootCore",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            path: "Sources/ScootCLI"
+        ),
         .testTarget(
             name: "ScootTests",
-            dependencies: ["ScootCore"],
+            dependencies: ["ScootCore", "ScootCLI"],
             path: "Tests/ScootTests"
         )
     ]

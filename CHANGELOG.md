@@ -8,6 +8,29 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-05
+### Added
+- 新增命令行接口 `scoot`（可执行 target `ScootCLI`，安装后拷贝为 `scoot`），与菜单栏 GUI
+  共享同一份状态文件（`destinations.json` / `sources.json` / `history.jsonl`），供 Claude Code /
+  OpenClaw 等 agent 及用户本人从终端驱动文件分类。直接复用 `ScootCore`，未重复实现业务逻辑。
+  子命令：`dest list/add/remove`、`src list/add/use`、`list [<source>]`、
+  `move <file>... --to <dest>`、`rename <file> --name <newName>`、
+  `slim <file>... [-q high|balanced|extreme]`、`log [-n N]`、`capabilities`。
+- `--json` agent 契约（对齐 slim 的 CLI）：加了它 stdout 只输出一个 JSON 对象，人类文本走别处；
+  退出码 0 成功、1 为已处理错误（`{"error":...}`）；`move`/`slim` 支持部分成功不算失败。
+  `scoot capabilities`（恒定 JSON）/ `scoot --capabilities` / `scoot --version` 供 agent 自发现。
+- `ScootCore/SlimService.locateBinary` 新增 PATH 查找：bundle Resources → `SCOOT_SLIM_BIN` →
+  扫描 `PATH` 找 `slim`（不 shell out 到 `which`） → 开发期兜底路径。任何用 slim 自带
+  `install.sh`（pipx）装过 slim 的 Mac，`scoot slim` 都能直接工作。
+- `scripts/install.sh`：源码构建安装器（`curl | bash` 或从 clone 里跑），检测 CLT、
+  clone/更新仓库、尽力装 slim、`make app` 构建、把 CLI 装到 `~/.local/bin/scoot`、
+  把 `.app` 装到 `/Applications`。`Makefile` 新增 `cli` / `install-cli` target。
+- `docs/SPEC-cli.md`：CLI 命令面 + 每个子命令的 JSON 形状文档。`AGENTS.md`：agent 调用指南。
+### Changed
+- `scripts/build-app.sh`：slim 二进制内嵌改为可选——找不到 `SLIM_BIN` 时打印警告并跳过内嵌
+  （而不是 `exit 1`），运行时退到 PATH 查找；`.app` 仍然能在没有冻结 slim 二进制的全新 Mac 上构建。
+- `CFBundleShortVersionString` → `0.6.0`，`CFBundleVersion` → `7`。
+
 ## [0.5.1] - 2026-08-04
 ### Fixed
 - 可见性修复：此前为纯菜单栏 App（`LSUIElement`），双击后无 Dock 图标、无窗口，
@@ -48,7 +71,8 @@
 ### Added
 - Phase 1 MVP：菜单栏面板、源文件夹监控、目标网格、点击/拖拽移动、重名序号、撤销栈。
 
-[Unreleased]: https://github.com/taokuntao-a11y/scoot/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/taokuntao-a11y/scoot/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/taokuntao-a11y/scoot/releases/tag/v0.6.0
 [0.5.1]: https://github.com/taokuntao-a11y/scoot/releases/tag/v0.5.1
 [0.5.0]: https://github.com/taokuntao-a11y/scoot/releases/tag/v0.5.0
 [0.4.0]: https://github.com/taokuntao-a11y/scoot/releases/tag/v0.4.0

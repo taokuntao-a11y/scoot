@@ -77,7 +77,9 @@ public struct SlimService: Sendable {
     // MARK: Binary discovery
 
     /// Search order: (1) app bundle Resources/slim, (2) SCOOT_SLIM_BIN env override,
-    /// (3) dev fallback at the slim repo's frozen build output.
+    /// (3) `slim` found on PATH (so a Mac that installed slim via its own install.sh
+    /// — e.g. pipx — works even without a bundle-embedded copy), (4) dev fallback at
+    /// the slim repo's frozen build output.
     /// Exposed with an injectable candidate list so tests don't depend on a real app bundle.
     public static func locateBinary(
         bundle: Bundle = .main,
@@ -94,9 +96,27 @@ public struct SlimService: Sendable {
                 return url
             }
         }
+        if let onPath = locateOnPath(named: "slim", environment: environment) {
+            return onPath
+        }
         let fallback = URL(fileURLWithPath: devFallback)
         if FileManager.default.isExecutableFile(atPath: fallback.path) {
             return fallback
+        }
+        return nil
+    }
+
+    /// Scans `PATH` entries for an executable file named `name`. Deliberately does
+    /// NOT shell out to `which` — enumerating `PATH` directly keeps this synchronous,
+    /// dependency-free, and deterministic for tests.
+    private static func locateOnPath(named name: String, environment: [String: String]) -> URL? {
+        guard let pathVar = environment["PATH"], !pathVar.isEmpty else { return nil }
+        for dir in pathVar.split(separator: ":") {
+            guard !dir.isEmpty else { continue }
+            let candidate = URL(fileURLWithPath: String(dir)).appendingPathComponent(name)
+            if FileManager.default.isExecutableFile(atPath: candidate.path) {
+                return candidate
+            }
         }
         return nil
     }
