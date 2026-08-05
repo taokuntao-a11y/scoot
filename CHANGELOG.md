@@ -8,6 +8,19 @@
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-08-06
+### Fixed
+- `scoot rename --name` 现在校验新名必须是**纯文件名**：拒绝包含路径分隔符 `/` 或为空 /
+  `.` / `..` 的输入（此前 `--name ../x` 会被 `MoveEngine.rename` 解析到文件所在目录之外，
+  可能把文件写出目标目录）。纯函数 `validatedBasename` 便于单测。
+- `scoot slim` 不再**静默丢弃**不支持的文件：不支持的输入会作为 `errors` 项报告
+  （`不支持的文件类型: .xxx`），而不是被过滤掉、只在"全部不支持"时才报一句笼统错误。
+  混合输入时支持的照压、不支持的逐个列出。
+- `scoot slim -q` 非法质量值提前给出明确错误（`high | balanced | extreme`），
+  不再把非法值透传给底层引擎产生费解的输出。
+### Changed
+- 版本号 → 0.6.1（`CFBundleShortVersionString` 0.6.1 / `CFBundleVersion` 8）。
+
 ## [0.6.0] - 2026-08-05
 ### Added
 - 新增命令行接口 `scoot`（可执行 target `ScootCLI`，安装后拷贝为 `scoot`），与菜单栏 GUI
@@ -71,7 +84,8 @@
 ### Added
 - Phase 1 MVP：菜单栏面板、源文件夹监控、目标网格、点击/拖拽移动、重名序号、撤销栈。
 
-[Unreleased]: https://github.com/taokuntao-a11y/scoot/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/taokuntao-a11y/scoot/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/taokuntao-a11y/scoot/releases/tag/v0.6.1
 [0.6.0]: https://github.com/taokuntao-a11y/scoot/releases/tag/v0.6.0
 [0.5.1]: https://github.com/taokuntao-a11y/scoot/releases/tag/v0.5.1
 [0.5.0]: https://github.com/taokuntao-a11y/scoot/releases/tag/v0.5.0

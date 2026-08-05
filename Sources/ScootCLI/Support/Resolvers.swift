@@ -15,6 +15,24 @@ enum PathResolver {
     }
 }
 
+// MARK: - Basename validation (for `rename --name`)
+
+/// Validates that `rename --name <x>` is a plain filename, not a path. Rejects an
+/// empty/whitespace name, anything containing a path separator, and the special
+/// `.`/`..` entries — otherwise `MoveEngine.rename` would resolve it against the
+/// file's directory and could write outside it (e.g. `--name ../evil`). Pure, no
+/// disk access — directly unit-testable. Returns the trimmed, validated basename.
+func validatedBasename(_ name: String) throws -> String {
+    let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else {
+        throw CLIError("新文件名不能为空")
+    }
+    guard !trimmed.contains("/"), trimmed != ".", trimmed != ".." else {
+        throw CLIError("新文件名必须是纯文件名，不能包含路径分隔符或为 . / ..：\(name)")
+    }
+    return trimmed
+}
+
 // MARK: - Name-or-path matching against stored Destination / SourceFolder lists
 
 /// Matches a `<name-or-path>` CLI argument against stored destinations: exact name

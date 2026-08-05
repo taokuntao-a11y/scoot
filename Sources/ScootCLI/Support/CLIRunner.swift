@@ -128,9 +128,10 @@ enum CLIRunner {
     // MARK: - rename
 
     static func rename(file: String, newName: String, cwd: String) throws -> RenameOutput {
+        let safeName = try validatedBasename(newName)
         let url = URL(fileURLWithPath: PathResolver.resolve(file, relativeTo: cwd))
         let engine = MoveEngine()
-        let result = engine.rename([(url: url, newName: newName)])
+        let result = engine.rename([(url: url, newName: safeName)])
 
         if let failure = result.errors.first {
             throw CLIError("重命名失败: \(failure.error.localizedDescription)")
@@ -148,15 +149,28 @@ enum CLIRunner {
     // MARK: - slim
 
     static func slim(files: [String], quality: String, cwd: String) async throws -> SlimOutput {
+        guard ["high", "balanced", "extreme"].contains(quality) else {
+            throw CLIError("压缩质量必须是 high | balanced | extreme，收到：\(quality)")
+        }
+
         let urls = files.map { URL(fileURLWithPath: PathResolver.resolve($0, relativeTo: cwd)) }
-        let targets = urls.filter { SlimService.canSlim($0) }
-        guard !targets.isEmpty else {
-            throw CLIError("所选文件均不支持压缩")
+
+        // Partition into slimmable targets and unsupported files. Unsupported files
+        // are NOT silently dropped — they're reported as errors so the caller sees
+        // exactly which inputs were skipped and why.
+        var targets: [URL] = []
+        var failures: [(url: URL, error: String)] = []
+        for url in urls {
+            if SlimService.canSlim(url) {
+                targets.append(url)
+            } else {
+                let ext = url.pathExtension.isEmpty ? "(无扩展名)" : ".\(url.pathExtension.lowercased())"
+                failures.append((url: url, error: "不支持的文件类型: \(ext)"))
+            }
         }
 
         let service = SlimService()
         var successes: [(url: URL, result: SlimResult)] = []
-        var failures: [(url: URL, error: any Error)] = []
 
         for item in targets {
             let ext = item.pathExtension
@@ -169,7 +183,7 @@ enum CLIRunner {
                 let result = try await service.compress(item, to: output, quality: quality)
                 successes.append((url: item, result: result))
             } catch {
-                failures.append((url: item, error: error))
+                failures.append((url: item, error: error.localizedDescription))
             }
         }
 
@@ -190,7 +204,7 @@ enum CLIRunner {
                 reduction_pct: pair.result.reductionPct
             )
         }
-        let errors = failures.map { SlimErrorEntry(file: $0.url.path, error: $0.error.localizedDescription) }
+        let errors = failures.map { SlimErrorEntry(file: $0.url.path, error: $0.error) }
         let savedMB = successes.reduce(0.0) { $0 + max(0, $1.result.inputSizeMB - $1.result.outputSizeMB) }
 
         return SlimOutput(compressed: compressed, errors: errors, saved_mb: savedMB)

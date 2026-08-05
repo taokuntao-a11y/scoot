@@ -4,6 +4,30 @@ import Testing
 @testable import ScootCLI
 @testable import ScootCore
 
+// MARK: - validatedBasename (rename --name path-injection guard)
+
+@Suite("validatedBasename")
+struct ValidatedBasenameTests {
+
+    @Test func acceptsPlainNameAndTrims() throws {
+        #expect(try validatedBasename("report.pdf") == "report.pdf")
+        #expect(try validatedBasename("  2026-报告.pdf  ") == "2026-报告.pdf")
+    }
+
+    @Test func rejectsPathSeparator() {
+        #expect(throws: CLIError.self) { try validatedBasename("../evil.pdf") }
+        #expect(throws: CLIError.self) { try validatedBasename("sub/dir.pdf") }
+        #expect(throws: CLIError.self) { try validatedBasename("/etc/passwd") }
+    }
+
+    @Test func rejectsEmptyAndDotEntries() {
+        #expect(throws: CLIError.self) { try validatedBasename("") }
+        #expect(throws: CLIError.self) { try validatedBasename("   ") }
+        #expect(throws: CLIError.self) { try validatedBasename(".") }
+        #expect(throws: CLIError.self) { try validatedBasename("..") }
+    }
+}
+
 // MARK: - PathResolver (pure — no filesystem access)
 
 @Suite("PathResolver")
