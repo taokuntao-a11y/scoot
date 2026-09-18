@@ -115,6 +115,36 @@ public final class MoveEngine: @unchecked Sendable {
         return MoveResult(moved: moved, errors: errors)
     }
 
+    /// Move items to the system Trash. Shares the undo stack: undo moves the
+    /// files back out of the Trash to their original folder, so "delete" stays
+    /// as recoverable as a normal move.
+    public func trash(_ items: [URL]) -> MoveResult {
+        var moved: [(from: URL, to: URL)] = []
+        var errors: [(url: URL, error: any Error)] = []
+
+        for item in items {
+            do {
+                var resulting: NSURL?
+                try FileManager.default.trashItem(at: item, resultingItemURL: &resulting)
+                // resultingItemURL is the landed URL (Trash may rename on
+                // collision); fall back to the original so a nil can never
+                // poison the undo stack.
+                moved.append((from: item, to: (resulting as URL?) ?? item))
+            } catch {
+                errors.append((url: item, error: error))
+            }
+        }
+
+        if !moved.isEmpty {
+            undoStack.append(moved)
+            if undoStack.count > maxUndoDepth {
+                undoStack.removeFirst()
+            }
+        }
+
+        return MoveResult(moved: moved, errors: errors)
+    }
+
     /// Reverse the last batch. Returns nil if nothing to undo.
     @discardableResult
     public func undo() -> MoveResult? {

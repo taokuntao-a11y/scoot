@@ -8,6 +8,25 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-18
+### Added
+- 目标网格新增内置**「回收站」瓦片**（固定末位，不可移除）：点击/拖放把文件移入系统
+  回收站（`FileManager.trashItem`，非永久删除），与移动共享同一 undo 栈——「撤销」可把
+  文件从回收站原路拉回原文件夹。toast「已移入回收站 N 项」，操作日志记「→ 回收站」。
+  暂未加入 `scoot` CLI。
+- 左栏列表顶部新增**筛选胶囊行**（单选）：全部 / 今天 / 图片 / 文档 / 压缩包 / 其他。
+  「今天」按加入时间过滤；类型按扩展名分桶，文件夹与 dmg/pkg 等归「其他」
+  （`ScootCore.FileFilter`）。筛选生效时头部徽章显示「筛出 N 项」，筛空有空态，
+  源文件夹为空时胶囊行隐藏。切换筛选会清空当前选择，防止被筛掉隐藏的文件被误移。
+- UI 概念稿评审判定表落仓库：`docs/DESIGN-REVIEW-concepts-2026-09-18.md`
+  （四套概念方案逐屏对代码核对 + 实装约束，含「保留系统图标美术资源」拍板）。
+### Fixed
+- `LLM.swift` 解析 Anthropic 兼容响应改为取第一个 `type == "text"` 内容块：
+  deepseek-flash（V4.1-Flash）返回 thinking+text 双块时旧逻辑取 `content[0]` 必错。
+### Changed
+- 版本号 → 0.7.0（`CFBundleShortVersionString` 0.7.0 / `CFBundleVersion` 9 / CLI 同步）。
+- 测试 95 → 102（新增回收站含文件夹回收+撤销、部分失败不中断；FileFilter 分桶/今天/顺序）。
+
 ## [0.6.1] - 2026-08-06
 ### Fixed
 - `scoot rename --name` 现在校验新名必须是**纯文件名**：拒绝包含路径分隔符 `/` 或为空 /

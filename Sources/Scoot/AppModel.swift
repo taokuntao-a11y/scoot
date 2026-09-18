@@ -108,6 +108,40 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: - Trash
+
+    /// Move items to the system Trash via MoveEngine. Same undo stack as moves,
+    /// so the 撤销 button restores trashed files to their original folder.
+    func trash(_ items: [URL]) {
+        let result = engine.trash(items)
+        canUndo = engine.canUndo
+        lastBatchDescription = engine.lastBatchDescription
+        if result.errors.isEmpty {
+            errorMessage = nil
+        } else {
+            let names = result.errors.map { $0.url.lastPathComponent }.joined(separator: ", ")
+            errorMessage = "删除失败: \(names)"
+        }
+
+        if !result.moved.isEmpty {
+            watcher?.removeImmediately(result.moved.map(\.from))
+
+            let batchID = UUID()
+            let logEntries = result.moved.map { pair in
+                LogEntry(
+                    fileName: pair.from.lastPathComponent,
+                    destName: "回收站",
+                    batchID: batchID,
+                    isUndo: false
+                )
+            }
+            moveLog.record(batch: logEntries)
+
+            showToast("已移入回收站 \(result.moved.count) 项")
+            showCompletion(count: result.moved.count)
+        }
+    }
+
     // MARK: - Rename
 
     /// Rename files in-place via MoveEngine and record log entries.

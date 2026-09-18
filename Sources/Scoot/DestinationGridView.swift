@@ -17,6 +17,10 @@ struct DestinationGridView: View {
 
     private let columns = [GridItem(.flexible()), GridItem(.flexible())]
 
+    /// Stable identity for the built-in Trash tile (shares the UUID-keyed
+    /// hover/highlight/shake state with real destination tiles).
+    private static let trashTileID = UUID()
+
     var body: some View {
         if destinationStore.destinations.isEmpty {
             EmptyDestinationsGuideView {
@@ -57,6 +61,33 @@ struct DestinationGridView: View {
                             }
                         }
                     }
+
+                    // Built-in Trash tile — always last, cannot be removed.
+                    TrashTileView(
+                        isHighlighted: highlightedID == Self.trashTileID,
+                        movedCount: highlightedID == Self.trashTileID ? movedCount : 0,
+                        isHovered: hoveredID == Self.trashTileID
+                    )
+                    .modifier(ShakeEffect(
+                        shakes: 3,
+                        animatableData: shakingID == Self.trashTileID ? shakeOffset : 0
+                    ))
+                    .onTapGesture {
+                        trashSelected()
+                    }
+                    .onHover { inside in
+                        if inside {
+                            hoveredID = Self.trashTileID
+                            NSCursor.pointingHand.push()
+                        } else {
+                            if hoveredID == Self.trashTileID { hoveredID = nil }
+                            NSCursor.pop()
+                        }
+                    }
+                    .onDrop(of: [UTType.fileURL], isTargeted: nil) { providers in
+                        handleTrashDrop(providers: providers)
+                    }
+                    .help("移入系统回收站，可撤销")
                 }
                 .padding(12)
             }
@@ -90,6 +121,65 @@ struct DestinationGridView: View {
         }
 
         performMove(urls: selectedURLs, to: dest)
+    }
+
+    private func trashSelected() {
+        let selectedURLs = sourceWatcher.files
+            .map(\.url)
+            .filter { selectionStore.selection.contains($0) }
+
+        guard !selectedURLs.isEmpty else {
+            let targetID = Self.trashTileID
+            shakingID = targetID
+            shakeOffset = 0
+            withAnimation(.easeInOut(duration: 0.3)) {
+                shakeOffset = 1
+            }
+            Task {
+                try? await Task.sleep(nanoseconds: 350_000_000)
+                if shakingID == targetID {
+                    shakeOffset = 0
+                    shakingID = nil
+                }
+            }
+            appModel.flashStepOne()
+            return
+        }
+
+        performTrash(urls: selectedURLs)
+    }
+
+    private func handleTrashDrop(providers: [NSItemProvider]) -> Bool {
+        Task { @MainActor in
+            var resolved: [URL] = []
+            for provider in providers {
+                if let url = await loadURL(from: provider) {
+                    resolved.append(url)
+                }
+            }
+            guard !resolved.isEmpty else { return }
+            let allInSelection = resolved.allSatisfy { selectionStore.selection.contains($0) }
+            let urlsToTrash: [URL]
+            if allInSelection && !selectionStore.selection.isEmpty {
+                urlsToTrash = sourceWatcher.files
+                    .map(\.url)
+                    .filter { selectionStore.selection.contains($0) }
+            } else {
+                urlsToTrash = resolved
+            }
+            performTrash(urls: urlsToTrash)
+        }
+        return true
+    }
+
+    private func performTrash(urls: [URL]) {
+        appModel.trash(urls)
+        selectionStore.selection = []
+        movedCount = urls.count
+        flashHighlight(id: Self.trashTileID)
+        withAnimation {
+            sourceWatcher.reload()
+        }
     }
 
     private func handleDrop(providers: [NSItemProvider], to dest: Destination) -> Bool {
@@ -137,17 +227,17 @@ struct DestinationGridView: View {
         appModel.move(urls, to: dest)
         selectionStore.selection = []
         movedCount = urls.count
-        flashHighlight(for: dest)
+        flashHighlight(id: dest.id)
         withAnimation {
             sourceWatcher.reload()
         }
     }
 
-    private func flashHighlight(for dest: Destination) {
-        highlightedID = dest.id
+    private func flashHighlight(id: UUID) {
+        highlightedID = id
         Task {
             try? await Task.sleep(nanoseconds: 1_500_000_000)
-            if highlightedID == dest.id {
+            if highlightedID == id {
                 highlightedID = nil
                 movedCount = 0
             }
@@ -206,6 +296,64 @@ private struct ShakeEffect: GeometryEffect {
     func effectValue(size: CGSize) -> ProjectionTransform {
         let translation = amount * sin(animatableData * .pi * CGFloat(shakes))
         return ProjectionTransform(CGAffineTransform(translationX: translation, y: 0))
+    }
+}
+
+// MARK: - Trash tile
+
+/// Built-in "回收站" tile: same footprint as a destination tile, red accent on
+/// hover, files land in the system Trash (recoverable via 撤销).
+struct TrashTileView: View {
+    let isHighlighted: Bool
+    let movedCount: Int
+    let isHovered: Bool
+
+    @State private var bounceScale: CGFloat = 1.0
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Image(systemName: isHovered ? "trash.fill" : "trash")
+                .font(.system(size: 24))
+                .frame(width: 32, height: 32)
+                .foregroundStyle(isHovered ? AnyShapeStyle(Color.red) : AnyShapeStyle(.secondary))
+
+            Text("回收站")
+                .font(.caption)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+
+            if isHighlighted && movedCount > 0 {
+                Text("已移入 \(movedCount) 项")
+                    .font(.caption2)
+                    .foregroundStyle(.green)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 80)
+        .scaleEffect(bounceScale)
+        .background(
+            isHighlighted
+                ? AnyShapeStyle(Color.green.opacity(0.2))
+                : isHovered
+                    ? AnyShapeStyle(Color.red.opacity(0.12))
+                    : AnyShapeStyle(.quaternary),
+            in: RoundedRectangle(cornerRadius: 8)
+        )
+        .animation(.easeInOut(duration: 0.2), value: isHighlighted)
+        .animation(.easeInOut(duration: 0.15), value: isHovered)
+        .onChange(of: isHighlighted) { newVal in
+            if newVal {
+                withAnimation(.spring(response: 0.15, dampingFraction: 0.45)) {
+                    bounceScale = 1.06
+                }
+                Task {
+                    try? await Task.sleep(nanoseconds: 160_000_000)
+                    withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
+                        bounceScale = 1.0
+                    }
+                }
+            }
+        }
     }
 }
 

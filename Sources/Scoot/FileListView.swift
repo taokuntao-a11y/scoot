@@ -6,7 +6,13 @@ struct FileListView: View {
     @EnvironmentObject private var sourceWatcher: SourceWatcher
     @EnvironmentObject private var selectionStore: SelectionStore
 
+    @Binding var filter: FileFilter
+
     @AppStorage("hasSeenIntro") private var hasSeenIntro: Bool = false
+
+    private var filteredFiles: [FileItem] {
+        filter.apply(to: sourceWatcher.files)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -20,6 +26,12 @@ struct FileListView: View {
                 Divider()
             }
 
+            // Filter capsules — hidden when the folder itself is empty
+            if !sourceWatcher.files.isEmpty {
+                FilterChipsRow(filter: $filter)
+                Divider()
+            }
+
             Group {
                 if sourceWatcher.files.isEmpty {
                     VStack {
@@ -28,8 +40,15 @@ struct FileListView: View {
                             .foregroundStyle(.secondary)
                         Spacer()
                     }
+                } else if filteredFiles.isEmpty {
+                    VStack {
+                        Spacer()
+                        Text("没有「\(filter.rawValue)」文件")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
                 } else {
-                    List(sourceWatcher.files, selection: $selectionStore.selection) { item in
+                    List(filteredFiles, selection: $selectionStore.selection) { item in
                         FileRowView(item: item)
                             .tag(item.url)
                             .onDrag {
@@ -61,6 +80,44 @@ struct FileListView: View {
                 }
             }
         }
+        // A hidden-but-selected file would still be moved by tile clicks, so the
+        // selection must not survive a filter switch.
+        .onChange(of: filter) { _ in
+            selectionStore.selection = []
+        }
+    }
+}
+
+// MARK: - Filter chips
+
+private struct FilterChipsRow: View {
+    @Binding var filter: FileFilter
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 5) {
+                ForEach(FileFilter.allCases) { f in
+                    Button {
+                        filter = f
+                    } label: {
+                        Text(f.rawValue)
+                            .font(.caption)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 3)
+                            .background(
+                                filter == f
+                                    ? AnyShapeStyle(Color.accentColor)
+                                    : AnyShapeStyle(Color.secondary.opacity(0.15)),
+                                in: Capsule()
+                            )
+                            .foregroundStyle(filter == f ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 10)
+        }
+        .padding(.vertical, 5)
     }
 }
 

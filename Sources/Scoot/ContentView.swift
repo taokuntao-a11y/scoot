@@ -12,6 +12,8 @@ struct ContentView: View {
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var selectionStore: SelectionStore
 
+    @State private var fileFilter: FileFilter = .all
+
     var body: some View {
         ZStack(alignment: .bottom) {
             // MARK: Main panel content
@@ -26,7 +28,7 @@ struct ContentView: View {
                     VStack(spacing: 0) {
                         SourceHeaderView(badge: selectionBadge)
                         Divider()
-                        FileListView()
+                        FileListView(filter: $fileFilter)
                     }
                     .frame(width: 320)
 
@@ -124,7 +126,11 @@ struct ContentView: View {
         let n = selectionStore.selection.count
         if n > 0 { return "已选 \(n)" }
         let total = sourceWatcher.files.count
-        return total > 0 ? "共 \(total) 项" : ""
+        guard total > 0 else { return "" }
+        if fileFilter != .all {
+            return "筛出 \(fileFilter.apply(to: sourceWatcher.files).count) 项"
+        }
+        return "共 \(total) 项"
     }
 
     private func addDestination() {

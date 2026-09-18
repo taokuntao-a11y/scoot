@@ -70,6 +70,48 @@ struct RenameTests {
     }
 }
 
+// MARK: - FileFilter tests
+
+@Suite("FileFilter")
+struct FileFilterTests {
+    private func item(_ name: String, isDir: Bool = false, addedAt: Date = .distantPast) -> FileItem {
+        FileItem(
+            url: URL(fileURLWithPath: "/tmp/\(name)", isDirectory: isDir),
+            name: name,
+            addedAt: addedAt,
+            size: 1,
+            isDirectory: isDir
+        )
+    }
+
+    @Test func typeBuckets() {
+        #expect(FileFilter.images.matches(item("photo.PNG")))
+        #expect(FileFilter.docs.matches(item("发票.pdf")))
+        #expect(FileFilter.archives.matches(item("bundle.tar.gz")))
+        #expect(FileFilter.other.matches(item("setup.dmg")))
+        #expect(!FileFilter.images.matches(item("发票.pdf")))
+        #expect(!FileFilter.other.matches(item("photo.png")))
+    }
+
+    @Test func directoriesAreOtherOnly() {
+        let folder = item("pics.png", isDir: true)
+        #expect(FileFilter.other.matches(folder))
+        #expect(!FileFilter.images.matches(folder))
+        #expect(FileFilter.all.matches(folder))
+    }
+
+    @Test func todayMatchesOnlyToday() {
+        #expect(FileFilter.today.matches(item("new.txt", addedAt: Date())))
+        #expect(!FileFilter.today.matches(item("old.txt", addedAt: .distantPast)))
+    }
+
+    @Test func applyFiltersAndKeepsOrder() {
+        let items = [item("a.png"), item("b.pdf"), item("c.zip"), item("d.png")]
+        #expect(FileFilter.all.apply(to: items).count == 4)
+        #expect(FileFilter.images.apply(to: items).map(\.name) == ["a.png", "d.png"])
+    }
+}
+
 // MARK: - MoveEngine tests
 
 @Suite("MoveEngine")
@@ -214,6 +256,66 @@ struct MoveEngineTests {
         // One error for the bad file
         #expect(result.errors.count == 1)
         #expect(result.moved.count == 1)
+    }
+
+    @Test func trashThenUndoRestores() throws {
+        let src = try tempDir()
+        defer { try? FileManager.default.removeItem(at: src) }
+
+        let file = try makeFile(name: "junk.txt", in: src)
+        let engine = MoveEngine()
+        let result = engine.trash([file])
+
+        #expect(result.errors.isEmpty)
+        #expect(result.moved.count == 1)
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+        // Landed in the Trash at the reported URL
+        let trashed = try #require(result.moved.first?.to)
+        #expect(FileManager.default.fileExists(atPath: trashed.path))
+        #expect(engine.canUndo)
+
+        // Undo pulls it back out of the Trash to the original folder
+        let undone = try #require(engine.undo())
+        #expect(undone.errors.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: file.path))
+        #expect(!FileManager.default.fileExists(atPath: trashed.path))
+    }
+
+    @Test func trashDirectoryThenUndoKeepsChildren() throws {
+        let src = try tempDir()
+        defer { try? FileManager.default.removeItem(at: src) }
+
+        let folder = src.appendingPathComponent("bundle")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        _ = try makeFile(name: "inner.txt", in: folder)
+
+        let engine = MoveEngine()
+        let result = engine.trash([folder])
+
+        #expect(result.errors.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: folder.path))
+
+        let undone = try #require(engine.undo())
+        #expect(undone.errors.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: folder.appendingPathComponent("inner.txt").path))
+    }
+
+    @Test func trashPartialFailureDoesNotAbort() throws {
+        let src = try tempDir()
+        defer { try? FileManager.default.removeItem(at: src) }
+
+        let real = try makeFile(name: "real.txt", in: src)
+        let ghost = src.appendingPathComponent("ghost.txt")
+
+        let engine = MoveEngine()
+        let result = engine.trash([ghost, real])
+
+        #expect(result.errors.count == 1)
+        #expect(result.moved.count == 1)
+        #expect(!FileManager.default.fileExists(atPath: real.path))
+
+        // Clean the real file back out of the Trash
+        _ = engine.undo()
     }
 
     @Test func undoNilWhenEmpty() {
