@@ -95,14 +95,15 @@ public struct AnthropicClient: LLMService {
             throw LLMError.httpError(statusCode: httpResponse.statusCode, body: bodyStr)
         }
 
-        // Parse response: { "content": [{ "type": "text", "text": "..." }] }
+        // Parse response: { "content": [...] } — take the first "text" block.
+        // Reasoning models (e.g. deepseek-flash) prepend a "thinking" block,
+        // so content[0] is not necessarily the text block.
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let content = json["content"] as? [[String: Any]],
-              let first = content.first,
-              let text = first["text"] as? String
+              let text = content.first(where: { $0["type"] as? String == "text" })?["text"] as? String
         else {
             let raw = String(data: data, encoding: .utf8) ?? "<binary>"
-            throw LLMError.unexpectedResponse("content[0].text missing; raw: \(raw.prefix(200))")
+            throw LLMError.unexpectedResponse("no text content block; raw: \(raw.prefix(200))")
         }
 
         return text
